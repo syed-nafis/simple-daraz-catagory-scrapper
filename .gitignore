@@ -1,0 +1,12 @@
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Bytecode/cache
+__pycache__/
+*.py[cod]
+
+# Ignore headphone text file
+headphone.txt

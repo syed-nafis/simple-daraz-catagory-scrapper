@@ -1,0 +1,39 @@
+===========================
+PYTHON ENVIRONMENT SETUP
+===========================
+
+1. Install Python 3.10 or newer:
+   https://www.python.org/downloads/
+
+2. Create a virtual environment:
+   Windows:
+      python -m venv venv
+
+   macOS / Linux:
+      python3 -m venv venv
+
+3. Activate the environment:
+   Windows:
+      venv\Scripts\activate
+
+   macOS / Linux:
+      source venv/bin/activate
+
+4. Upgrade pip:
+      pip install --upgrade pip
+
+5. Install project requirements:
+      pip install -r requirements.txt
+
+6. Run the scraper:
+      python scraper.py
+
+7. Output files generated:
+   - <query>.txt → full report including:
+      • Top selling item
+      • Items similar to top selling (fuzzy match)
+      • Full sorted product list
+
+===========================
+ENVIRONMENT IS READY
+===========================
