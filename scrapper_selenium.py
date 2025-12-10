@@ -26,7 +26,7 @@ def parse_sold_count(text):
 options = Options()
 options.add_argument("--width=1200")
 options.add_argument("--height=900")
-options.add_argument("--headless")
+# options.add_argument("--headless") # Commented out so you can see the category click happen
 
 driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
 
@@ -44,7 +44,73 @@ search_box.clear()
 search_box.send_keys(query)
 search_box.send_keys(Keys.RETURN)
 
+print("Searching...")
 time.sleep(5)
+
+
+# ------------------------- Category Filter Logic -----------------------
+# New functionality: Check sidebar for category matching the search query
+try:
+    print("Checking Category Sidebar...")
+    
+    # 1. Find the specific "Category" sidebar widget
+    # There are multiple widgets with class 'gJ98q', we need the one titled "Category"
+    sidebars = driver.find_elements(By.CLASS_NAME, "gJ98q")
+    category_sidebar = None
+    
+    for sb in sidebars:
+        try:
+            # Check the title of the widget
+            title_ele = sb.find_element(By.CLASS_NAME, "_9xWFp")
+            if "Category" in title_ele.text:
+                category_sidebar = sb
+                break
+        except:
+            continue
+
+    if category_sidebar:
+        # Helper function to look for link in the sidebar element
+        def get_matching_category(element, search_term):
+            links = element.find_elements(By.CSS_SELECTOR, "a.DMfHy")
+            for link in links:
+                if link.text.strip().lower() == search_term.lower():
+                    return link
+            return None
+
+        # 2. Check visible categories first
+        match_link = get_matching_category(category_sidebar, query)
+
+        # 3. If not found, look for "VIEW MORE" and expand
+        if not match_link:
+            try:
+                # The 'View More' button usually has class 'iSqXl'
+                view_more = category_sidebar.find_element(By.CSS_SELECTOR, ".iSqXl")
+                if "VIEW MORE" in view_more.text.upper():
+                    print("Category not found in top list. Clicking 'VIEW MORE'...")
+                    # Javascript click is often more reliable for these overlay elements
+                    driver.execute_script("arguments[0].click();", view_more)
+                    time.sleep(2) # Wait for list to expand
+                    
+                    # Check again in the expanded list
+                    match_link = get_matching_category(category_sidebar, query)
+            except:
+                # View more button might not exist if list is short
+                pass
+
+        # 4. Action: Click if found, or stay if not
+        if match_link:
+            print(f"✅ Found Category matching '{query}'. Navigating to category page...")
+            driver.execute_script("arguments[0].click();", match_link)
+            time.sleep(5) # Wait for the new category page to load
+        else:
+            print(f"❌ Category '{query}' not found. Scraping current search results.")
+
+    else:
+        print("Category sidebar not found. Proceeding with search page.")
+
+except Exception as e:
+    print(f"⚠️ Error in category logic: {e}")
+    print("Proceeding to scrape current page...")
 
 
 # ------------------------- Scrape Product Cards ------------------------
@@ -59,6 +125,11 @@ def log(text):
     print(text)
     output_lines.append(text)
 
+
+if not products:
+    log("No products found. (Page might not have loaded or check selectors)")
+else:
+    log(f"Found {len(products)} products. Processing...")
 
 for product in products:
     try:
@@ -101,59 +172,63 @@ for product in products:
 
 
 # ------------------------- Sort by Sold Count ---------------------------
-sorted_results = sorted(results, key=lambda x: x["sold_count"], reverse=True)
+# Check if we have results before processing
+if results:
+    sorted_results = sorted(results, key=lambda x: x["sold_count"], reverse=True)
 
 
-# ----------------------- FUZZY MATCH GROUP ------------------------------
+    # ----------------------- FUZZY MATCH GROUP ------------------------------
 
-TOP_ITEM = sorted_results[0]
-top_name = TOP_ITEM["name"]
+    TOP_ITEM = sorted_results[0]
+    top_name = TOP_ITEM["name"]
 
-similar_items = []
-THRESHOLD = 75
+    similar_items = []
+    THRESHOLD = 75
 
-for item in sorted_results:
-    score = fuzz.token_sort_ratio(top_name, item["name"])
-    if score >= THRESHOLD:
-        similar_items.append((score, item))
+    for item in sorted_results:
+        score = fuzz.token_sort_ratio(top_name, item["name"])
+        if score >= THRESHOLD:
+            similar_items.append((score, item))
 
-similar_items.sort(reverse=True, key=lambda x: x[0])
-
-
-# ------------------------- Display Results -----------------------------
-
-log("\n================= TOP SELLING ITEM =================\n")
-log(f"Name:  {TOP_ITEM['name']}")
-log(f"Price: {TOP_ITEM['price']}")
-log(f"SKU: {item['sku']}")
-log(f"Sold:  {TOP_ITEM['sold_text']} ({TOP_ITEM['sold_count']})")
-log(f"Link: {TOP_ITEM['link']}")
-log("\n=====================================================\n")
-
-log("============= ITEMS SIMILAR TO TOP SELLING =============\n")
-
-for score, item in similar_items:
-    log(f"[Similarity {score}%] {item['name']}")
-    log(f"   Price: {item['price']}")
-    log(f"   Sold:  {item['sold_text']} ({item['sold_count']})")
-    log(f"   Link:  {item['link']}")
-    #log("--------------------------------------------------------")
-    log("\n")
+    similar_items.sort(reverse=True, key=lambda x: x[0])
 
 
-# ----------------------- FULL SORTED PRODUCT LIST -----------------------
+    # ------------------------- Display Results -----------------------------
 
-log("\n================= ALL SORTED RESULTS =================\n")
+    log("\n================= TOP SELLING ITEM =================\n")
+    log(f"Name:  {TOP_ITEM['name']}")
+    log(f"Price: {TOP_ITEM['price']}")
+    log(f"SKU: {TOP_ITEM['sku']}")
+    log(f"Sold:  {TOP_ITEM['sold_text']} ({TOP_ITEM['sold_count']})")
+    log(f"Link: {TOP_ITEM['link']}")
+    log("\n=====================================================\n")
 
-for i, item in enumerate(sorted_results, start=1):
-    log(f"{i}. {item['name']}")
-    log(f"   Price: {item['price']}")
-    log(f"   SKU: {item['sku']}")
-    log(f"   Sold: {item['sold_text']} ({item['sold_count']})")
-    log(f"   Link: {item['link']}")
-    #log("----------------------------------------------------")
-    log("\n")
+    log("============= ITEMS SIMILAR TO TOP SELLING =============\n")
 
+    for score, item in similar_items:
+        log(f"[Similarity {score}%] {item['name']}")
+        log(f"   Price: {item['price']}")
+        log(f"   Sold:  {item['sold_text']} ({item['sold_count']})")
+        log(f"   Link:  {item['link']}")
+        #log("--------------------------------------------------------")
+        log("\n")
+
+
+    # ----------------------- FULL SORTED PRODUCT LIST -----------------------
+
+    log("\n================= ALL SORTED RESULTS =================\n")
+
+    for i, item in enumerate(sorted_results, start=1):
+        log(f"{i}. {item['name']}")
+        log(f"   Price: {item['price']}")
+        log(f"   SKU: {item['sku']}")
+        log(f"   Sold: {item['sold_text']} ({item['sold_count']})")
+        log(f"   Link: {item['link']}")
+        #log("----------------------------------------------------")
+        log("\n")
+
+else:
+    log("No results to sort or display.")
 
 driver.quit()
 
