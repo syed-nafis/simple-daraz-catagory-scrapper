@@ -18,6 +18,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 # ------------------------- CONFIGURATION -------------------------------
 CSV_FILE = "category_list.csv"
 BASE_REPORT_DIR = "category_report"
+CSV_FIELDNAMES = ['category_name', 'status', 'last_searched_date']
 
 # ------------------------- HELPER FUNCTIONS ---------------------------
 
@@ -36,6 +37,49 @@ def log(text, output_lines):
     """Helper to print to console and add to output list"""
     print(text)
     output_lines.append(text)
+
+def update_or_create_csv(category_name, status, date_str):
+    """
+    Handles Feature #2: Checks if CSV exists.
+    - If no: Creates it and adds the entry.
+    - If yes: Appends new entry or updates existing one.
+    """
+    rows = []
+    found = False
+
+    # 1. Read existing data if file exists
+    if os.path.exists(CSV_FILE):
+        with open(CSV_FILE, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            # Ensure we handle cases where file exists but is empty/corrupt
+            if reader.fieldnames:
+                for row in reader:
+                    # Clean whitespace keys
+                    clean_row = {k.strip(): v.strip() for k, v in row.items()}
+                    
+                    # Update if match found
+                    if clean_row.get('category_name', '').lower() == category_name.lower():
+                        clean_row['status'] = status
+                        clean_row['last_searched_date'] = date_str
+                        found = True
+                    rows.append(clean_row)
+
+    # 2. If not found in existing data, add it
+    if not found:
+        rows.append({
+            'category_name': category_name,
+            'status': status,
+            'last_searched_date': date_str
+        })
+
+    # 3. Write back to file
+    with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+    
+    action = "Updated" if found else "Created new"
+    print(f"💾 CSV Record {action}: {category_name} | {status}")
 
 def generate_report_mode(mode):
     """Handles the --generate-report logic"""
@@ -146,7 +190,6 @@ def scrape_category(driver, query, save_dir):
     output_lines.append(f"URL         : {current_page_url}")
     output_lines.append("=====================================================\n")
 
-
     # 3. Scrape Product Cards
     products = driver.find_elements(By.CSS_SELECTOR, "div[data-qa-locator='product-item']")
     results = []
@@ -239,68 +282,7 @@ def main():
 
     args = parser.parse_args()
 
-    # 1. Handle Report Generation (Exits after printing)
-    if args.generate_report:
-        generate_report_mode(args.generate_report)
-
-    # 2. Check for missing run arguments
-    if not args.next_items and not args.retry_pending_categories:
-        print("❌ Error: You must provide either '--next-items [N]' or '--retry-pending-categories'")
-        return
-
-    # 3. Load CSV
-    if not os.path.exists(CSV_FILE):
-        print(f"❌ Error: {CSV_FILE} not found!")
-        return
-
-    categories = []
-    with open(CSV_FILE, mode='r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        fieldnames = [x.strip() for x in reader.fieldnames] 
-        for row in reader:
-            clean_row = {k.strip(): v.strip() for k, v in row.items()}
-            categories.append(clean_row)
-
-    # 4. Filter Targets based on logic
-    targets = []        # List of category names
-    target_indices = [] # Indices in the original list to update later
-    
-    # Identify lists
-    pending_indices = [i for i, c in enumerate(categories) if c.get('status') == 'PENDING']
-    new_indices = [i for i, c in enumerate(categories) if c.get('status') == '']
-
-    if args.retry_pending_categories:
-        # Retry ONLY pending
-        print(f"🔄 Retrying {len(pending_indices)} PENDING categories...")
-        target_indices = pending_indices
-
-    elif args.next_items:
-        # Logic: Check pending first
-        final_indices = []
-        
-        if pending_indices:
-            print(f"⚠️ Found {len(pending_indices)} categories marked as 'PENDING' (Failed previously).")
-            user_input = input("❓ Do you want to retry these pending items first? (y/n): ").strip().lower()
-            
-            if user_input == 'y':
-                print("👍 Adding pending items to the queue.")
-                final_indices.extend(pending_indices)
-            else:
-                print("⏭️ Skipping pending items.")
-
-        # Add new items (limit to N)
-        count_needed = args.next_items
-        selected_new = new_indices[:count_needed]
-        final_indices.extend(selected_new)
-        
-        target_indices = final_indices
-        print(f"📌 Queued: {len(target_indices)} items (Pending: {len(final_indices)-len(selected_new)} | New: {len(selected_new)})")
-
-    if not target_indices:
-        print("🎉 No categories found to process based on your criteria!")
-        return
-
-    # 5. Setup Directory & Browser
+    # Shared Resources
     today_str = datetime.now().strftime("%Y-%m-%d")
     today_dir = os.path.join(BASE_REPORT_DIR, today_str)
     os.makedirs(today_dir, exist_ok=True)
@@ -309,57 +291,126 @@ def main():
     options.add_argument("--width=1200")
     options.add_argument("--height=900")
     options.add_argument("--headless") 
-    
-    print("\n🔌 Starting Browser...")
-    driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
-    
-    try:
-        driver.get("https://www.daraz.com.bd/")
-        time.sleep(3)
 
-        # 6. Loop Loop Loop
-        for list_idx in target_indices:
-            cat_data = categories[list_idx]
-            category_name = cat_data['category_name']
+    # 1. Report Mode (Exits after printing)
+    if args.generate_report:
+        generate_report_mode(args.generate_report)
+
+    # 2. Determine Mode: Interactive (Single) vs Batch (CSV List)
+    is_batch_mode = args.next_items or args.retry_pending_categories
+
+    if not is_batch_mode:
+        # === INTERACTIVE MODE (DEFAULT) ===
+        print("\n👋 Entering Interactive Mode")
+        user_query = input("🔎 Please enter a search query: ").strip()
+        
+        if not user_query:
+            print("❌ Empty query. Exiting.")
+            return
+
+        print("\n🔌 Starting Browser...")
+        driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
+        
+        try:
+            driver.get("https://www.daraz.com.bd/")
+            time.sleep(3)
             
-            try:
-                success = scrape_category(driver, category_name, today_dir)
+            success = scrape_category(driver, user_query, today_dir)
+            status = 'DONE' if success else 'PENDING'
+            
+            # Feature: Update or Create CSV entry
+            update_or_create_csv(user_query, status, today_str)
+            
+        except Exception as e:
+            print(f"❌ Error: {e}")
+        finally:
+            print("🔌 Closing Browser...")
+            driver.quit()
+
+    else:
+        # === BATCH MODE (LEGACY) ===
+        if not os.path.exists(CSV_FILE):
+            print(f"❌ Error: {CSV_FILE} not found! Run without arguments first to create one.")
+            return
+
+        categories = []
+        with open(CSV_FILE, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            # Normalize field names to handle potential BOM or whitespace issues
+            fieldnames = [x.strip() for x in reader.fieldnames] 
+            for row in reader:
+                clean_row = {k.strip(): v.strip() for k, v in row.items()}
+                categories.append(clean_row)
+
+        # Filter Targets
+        target_indices = []
+        pending_indices = [i for i, c in enumerate(categories) if c.get('status') == 'PENDING']
+        new_indices = [i for i, c in enumerate(categories) if c.get('status') == '']
+
+        if args.retry_pending_categories:
+            print(f"🔄 Retrying {len(pending_indices)} PENDING categories...")
+            target_indices = pending_indices
+
+        elif args.next_items:
+            final_indices = []
+            if pending_indices:
+                print(f"⚠️ Found {len(pending_indices)} categories marked as 'PENDING'.")
+                user_input = input("❓ Do you want to retry these pending items first? (y/n): ").strip().lower()
+                if user_input == 'y':
+                    final_indices.extend(pending_indices)
+            
+            count_needed = args.next_items
+            selected_new = new_indices[:count_needed]
+            final_indices.extend(selected_new)
+            target_indices = final_indices
+            print(f"📌 Queued: {len(target_indices)} items")
+
+        if not target_indices:
+            print("🎉 No categories found to process!")
+            return
+
+        print("\n🔌 Starting Browser (Batch Mode)...")
+        driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
+
+        try:
+            driver.get("https://www.daraz.com.bd/")
+            time.sleep(3)
+
+            for list_idx in target_indices:
+                cat_data = categories[list_idx]
+                category_name = cat_data['category_name']
                 
-                # Update Memory & File
-                categories[list_idx]['last_searched_date'] = today_str
-                
-                if success:
-                    categories[list_idx]['status'] = 'DONE'
-                    print(f"✅ Success: {category_name} marked as DONE.")
-                else:
+                try:
+                    success = scrape_category(driver, category_name, today_dir)
+                    
+                    # Update Memory
+                    categories[list_idx]['last_searched_date'] = today_str
+                    categories[list_idx]['status'] = 'DONE' if success else 'PENDING'
+                    
+                    if success: print(f"✅ {category_name} -> DONE")
+                    else: print(f"⚠️ {category_name} -> PENDING")
+
+                    # Write to CSV immediately
+                    with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+                        writer.writeheader()
+                        writer.writerows(categories)
+
+                except Exception as e:
+                    print(f"❌ Critical error scraping '{category_name}': {e}")
                     categories[list_idx]['status'] = 'PENDING'
-                    print(f"⚠️ Failed: {category_name} marked as PENDING.")
-
-                # Write to CSV immediately
-                with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(categories)
-
-            except Exception as e:
-                print(f"❌ Critical error scraping '{category_name}': {e}")
-                # Mark as PENDING on crash
-                categories[list_idx]['status'] = 'PENDING'
-                categories[list_idx]['last_searched_date'] = today_str
+                    with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+                        writer.writeheader()
+                        writer.writerows(categories)
                 
-                with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(categories)
-            
-            # Delay between items
-            delay = random.randint(5, 10)
-            print(f"⏳ Waiting {delay}s...")
-            time.sleep(delay)
+                delay = random.randint(5, 10)
+                print(f"⏳ Waiting {delay}s...")
+                time.sleep(delay)
 
-    finally:
-        print("🔌 Closing Browser...")
-        driver.quit()
+        finally:
+            print("🔌 Closing Browser...")
+            driver.quit()
 
 if __name__ == "__main__":
     main()
