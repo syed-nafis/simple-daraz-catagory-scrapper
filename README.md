@@ -13,9 +13,17 @@ This tool is designed to cut through the noise of e-commerce listings by identif
 ## 🚀 Features
 
 * **Automated Extraction:** Scrapes product name, price, sold count, SKU, and direct links.
-* **Smart Parsing:** Automatically detects and converts "k sold" formats (e.g., `2.4k` → `2400`) for accurate sorting.
-* **Sales Ranking:** Sorts the entire product list by the highest number of units sold.
-* **Fuzzy Matching:** Uses string similarity algorithms to identify items similar to the top-seller.
+
+### 🔁 Progress Tracking
+Your input CSV tracks:
+- `status` (DONE / PENDING)
+- `last_searched_date` (auto‑updated)
+
+The scraper resumes incomplete runs automatically.
+
+### 🎯 Fuzzy Matching (rapidfuzz)
+Ensures accurate mapping even when Google wording differs from input category names.
+
 * **Auto-Save:** Exports all data immediately to a local text file named after your query.
 
 ---
@@ -49,6 +57,12 @@ env\Scripts\activate
 source venv/bin/activate
 ```
 
+You may also need Firefox installed:
+
+```bash
+sudo apt install firefox-esr
+```
+
 ### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
@@ -64,23 +78,33 @@ Run the scraper:
 python scraper.py
 ```
 
-Maintain
+It expects a ```category_list.csv``` with columns :
 
-```
-Enter product search query: iphone 14 pro max
-```
+- category_name
+- status
+- last_searched_updated
+
+## 📁 Input CSV Format
+
+| Column              | Description           | 
+|---------------------|-----------------------|
+| category_name       | Category to search    |
+| status              | `PENDING` or `DONE`   |
+| last_searched_date  | Automatically updated |
+
+keeps track of the categories seached using this file.
+
 
 The script will:
 
-- Scrape the first page of Daraz results  
+- Scrape the first page of Daraz results
+- See if there is an existing cateogry page for the search_term 
+- If there is an existing category page -> scrap the products in that category page
+- If there is no category page for the search ->  scraps the search page
 - Find the top selling item  
 - Fuzzy-match similar product titles  
 - Display all results sorted by sold count  
-- Save all output into:
-
-```
-iphone 14 pro max.txt
-```
+- Save all output into: category_report -> date -> category.txt
 
 ---
 
