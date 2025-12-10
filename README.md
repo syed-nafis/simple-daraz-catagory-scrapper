@@ -64,7 +64,7 @@ Run the scraper:
 python scraper.py
 ```
 
-Enter a product search term:
+Maintain
 
 ```
 Enter product search query: iphone 14 pro max

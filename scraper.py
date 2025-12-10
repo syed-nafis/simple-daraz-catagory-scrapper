@@ -193,6 +193,7 @@ def scrape_category(driver, query, save_dir):
         log("\n================= TOP SELLING ITEM =================\n", output_lines)
         log(f"Name:  {TOP_ITEM['name']}", output_lines)
         log(f"Price: {TOP_ITEM['price']}", output_lines)
+        log(f"SKU:   {TOP_ITEM['sku']}", output_lines)
         log(f"Sold:  {TOP_ITEM['sold_text']} ({TOP_ITEM['sold_count']})", output_lines)
         log(f"Link: {TOP_ITEM['link']}", output_lines)
         log("\n=====================================================\n", output_lines)
@@ -201,6 +202,7 @@ def scrape_category(driver, query, save_dir):
         for score, item in similar_items:
             log(f"[Similarity {score}%] {item['name']}", output_lines)
             log(f"   Price: {item['price']}", output_lines)
+            log(f"   SKU:   {item['sku']}", output_lines)
             log(f"   Sold:  {item['sold_text']} ({item['sold_count']})", output_lines)
             log(f"   Link:  {item['link']}", output_lines)
             log("\n", output_lines)
@@ -209,6 +211,7 @@ def scrape_category(driver, query, save_dir):
         for i, item in enumerate(sorted_results, start=1):
             log(f"{i}. {item['name']}", output_lines)
             log(f"   Price: {item['price']}", output_lines)
+            log(f"   SKU:   {item['sku']}", output_lines)
             log(f"   Sold: {item['sold_text']} ({item['sold_count']})", output_lines)
             log(f"   Link: {item['link']}", output_lines)
             log("\n", output_lines)
