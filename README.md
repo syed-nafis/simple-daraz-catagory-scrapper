@@ -4,27 +4,23 @@
 ![Selenium](https://img.shields.io/badge/Selenium-4.0%2B-43B02A?style=for-the-badge&logo=selenium&logoColor=white)
 ![Firefox](https://img.shields.io/badge/Firefox-Headless-orange?style=for-the-badge&logo=firefox-browser&logoColor=white)
 
-A specialized web scraper that extracts product listings from **Daraz.com.bd**, sorts them by sales volume, and utilizes fuzzy logic to identify and group the most relevant products.
-
-This tool is designed to cut through the noise of e-commerce listings by identifying the **true top-selling item** and grouping similar variations using [RapidFuzz](https://github.com/maxbachmann/RapidFuzz).
+A specialized web scraper that extracts product listings from **Daraz.com.bd**, sorts them by sales volume, and utilizes fuzzy logic to identify and group the most relevant products. using [RapidFuzz](https://github.com/maxbachmann/RapidFuzz).
 
 ---
 
 ## 🚀 Features
 
-* **Automated Extraction:** Scrapes product name, price, sold count, SKU, and direct links.
-
 ### 🔁 Progress Tracking
-Your input CSV tracks:
+category_list.csv tracks:
 - `status` (DONE / PENDING)
 - `last_searched_date` (auto‑updated)
 
 The scraper resumes incomplete runs automatically.
 
 ### 🎯 Fuzzy Matching (rapidfuzz)
-Ensures accurate mapping even when Google wording differs from input category names.
+Ensures accurate mapping even when wording differs from input category names.
 
-* **Auto-Save:** Exports all data immediately to a local text file named after your query.
+* **Auto-Save:** Exports all data immediately to a local .txt files named after your query. 
 
 ---
 
