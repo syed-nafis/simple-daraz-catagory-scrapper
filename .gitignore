@@ -10,3 +10,9 @@ __pycache__/
 
 # Ignore headphone text file
 headphone.txt
+
+# Ignore category list CSV
+#category_list.csv
+
+#ignore category_reports folder
+category_reports/

@@ -1,42 +1,47 @@
-# Daraz Product Scraper with Fuzzy Matching
+# 🛒 Daraz Product Scraper with Fuzzy Matching
 
-This project scrapes product listings from **Daraz.com.bd** using Selenium, 
-sorts them by the number of sold units, identifies the top‐selling product, 
-and groups similar products using fuzzy text matching.
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![Selenium](https://img.shields.io/badge/Selenium-4.0%2B-43B02A?style=for-the-badge&logo=selenium&logoColor=white)
+![Firefox](https://img.shields.io/badge/Firefox-Headless-orange?style=for-the-badge&logo=firefox-browser&logoColor=white)
 
-All output is printed to the console and saved in a `<query>.txt` file.
+A specialized web scraper that extracts product listings from **Daraz.com.bd**, sorts them by sales volume, and utilizes fuzzy logic to identify and group the most relevant products.
+
+This tool is designed to cut through the noise of e-commerce listings by identifying the **true top-selling item** and grouping similar variations using [RapidFuzz](https://github.com/maxbachmann/RapidFuzz).
 
 ---
 
-## 🔧 Features
+## 🚀 Features
 
-- Scrapes product name, price, sold count, SKU, and link  
-- Detects and parses "k sold" formats (e.g., 2.4k → 2400)  
-- Sorts all products by highest sold count  
-- Applies fuzzy matching (RapidFuzz) to group similar items  
-- Outputs:
-  - Top selling item  
-  - Items similar to top selling  
-  - Full sorted results  
-- Saves everything into:  
-  ```
-  <search query>.txt
-  ```
+* **Automated Extraction:** Scrapes product name, price, sold count, SKU, and direct links.
+* **Smart Parsing:** Automatically detects and converts "k sold" formats (e.g., `2.4k` → `2400`) for accurate sorting.
+* **Sales Ranking:** Sorts the entire product list by the highest number of units sold.
+* **Fuzzy Matching:** Uses string similarity algorithms to identify items similar to the top-seller.
+* **Auto-Save:** Exports all data immediately to a local text file named after your query.
+
+---
+
+## 🛠️ Built With
+
+* **Python** - Core logic
+* **Selenium** - Web automation and scraping
+* **RapidFuzz** - String matching and similarity scoring
+* **Webdriver Manager** - Automated driver management (Firefox)
 
 ---
 
 ## 📦 Installation
 
-### 1. Create a virtual environment
-```bash
-python -m venv venv
-```
+Follow these steps to set up the project locally.
 
-### 2. Activate the environment
+### 1. Clone or Download the project
+Ensure you are in the project directory.
 
-#### Windows:
+### 2. Set up a Virtual Environment
+
+**Windows:**
 ```bash
-venv\Scripts\activate
+python -m venv env
+env\Scripts\activate
 ```
 
 #### Mac/Linux:
