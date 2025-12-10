@@ -26,7 +26,7 @@ def parse_sold_count(text):
 options = Options()
 options.add_argument("--width=1200")
 options.add_argument("--height=900")
-# options.add_argument("--headless") # Commented out so you can see the category click happen
+options.add_argument("--headless") # Commented out so you can see the category click happen
 
 driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
 
