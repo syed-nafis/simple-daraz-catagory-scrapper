@@ -47,24 +47,18 @@ def update_or_create_csv(category_name, status, date_str):
     rows = []
     found = False
 
-    # 1. Read existing data if file exists
     if os.path.exists(CSV_FILE):
         with open(CSV_FILE, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            # Ensure we handle cases where file exists but is empty/corrupt
             if reader.fieldnames:
                 for row in reader:
-                    # Clean whitespace keys
                     clean_row = {k.strip(): v.strip() for k, v in row.items()}
-                    
-                    # Update if match found
                     if clean_row.get('category_name', '').lower() == category_name.lower():
                         clean_row['status'] = status
                         clean_row['last_searched_date'] = date_str
                         found = True
                     rows.append(clean_row)
 
-    # 2. If not found in existing data, add it
     if not found:
         rows.append({
             'category_name': category_name,
@@ -72,7 +66,6 @@ def update_or_create_csv(category_name, status, date_str):
             'last_searched_date': date_str
         })
 
-    # 3. Write back to file
     with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
@@ -113,15 +106,63 @@ def generate_report_mode(mode):
         print(f"Total items found: {count}")
     sys.exit(0) 
 
+def scrape_page_items(driver):
+    """Helper to extract items from the current page view."""
+    products = driver.find_elements(By.CSS_SELECTOR, "div[data-qa-locator='product-item']")
+    page_results = []
+    
+    for product in products:
+        try: item_name = product.find_element(By.CSS_SELECTOR, ".RfADt a").text.strip()
+        except: item_name = ""
+        try: item_price = product.find_element(By.CSS_SELECTOR, ".aBrP0 .ooOxS").text.strip()
+        except: item_price = ""
+        try: sku = product.get_attribute("data-sku-simple")
+        except: sku = ""
+        try: 
+            link = product.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+            if link.startswith("//"): link = "https:" + link
+        except: link = ""
+        try: 
+            sold_text = product.find_element(By.CSS_SELECTOR, "._1cEkb span").text
+            sold_count = parse_sold_count(sold_text)
+        except: sold_text = ""; sold_count = 0
+
+        # --- FIX: BETTER IMAGE EXTRACTION ---
+        try:
+            img_element = product.find_element(By.CSS_SELECTOR, ".picture-wrapper img")
+            img_url = img_element.get_attribute("src")
+            
+            # Check if it's a Base64 placeholder (usually starts with "data:image")
+            if img_url and "data:image" in img_url:
+                # Try to get the real URL from 'data-src' (common for lazy loading)
+                real_url = img_element.get_attribute("data-src")
+                if real_url:
+                    img_url = real_url
+                    
+            # Normalize URL
+            if img_url and img_url.startswith("//"):
+                img_url = "https:" + img_url
+                
+        except: 
+            img_url = ""
+
+        # Only add valid items with names
+        if item_name:
+            page_results.append({
+                "name": item_name, "price": item_price, "sku": sku,
+                "link": link, "sold_text": sold_text, "sold_count": sold_count,
+                "image": img_url
+            })
+            
+    return page_results
+
 def scrape_category(driver, query, save_dir):
     """
-    Scrapes a single category.
+    Scrapes a single category (Page 1 & 2).
     Returns True if successful, False otherwise.
     """
     output_lines = []
     file_safe_query = re.sub(r'[\\/*?:"<>|]', "", query)
-    
-    # State tracking for the report header
     search_status_indicator = "❌ Category Not Found (Used General Search Results)"
     
     print(f"\n--- Starting search for: {query} ---")
@@ -171,7 +212,6 @@ def scrape_category(driver, query, save_dir):
                 print(f"✅ Found Category matching '{query}'. Navigating...")
                 driver.execute_script("arguments[0].click();", match_link)
                 time.sleep(5)
-                # Update status since we successfully clicked the category
                 search_status_indicator = "✅ Category Found (Official Category Page)"
             else:
                 print(f"ℹ️ Category '{query}' not found in sidebar. Scraping search results directly.")
@@ -180,7 +220,7 @@ def scrape_category(driver, query, save_dir):
     except Exception as e:
         print(f"⚠️ Minor error in category logic (continuing): {e}")
 
-    # --- CAPTURE URL HERE (After navigation is complete) ---
+    # --- CAPTURE URL HERE ---
     current_page_url = driver.current_url
 
     # --- WRITE HEADER TO OUTPUT ---
@@ -190,75 +230,105 @@ def scrape_category(driver, query, save_dir):
     output_lines.append(f"URL         : {current_page_url}")
     output_lines.append("=====================================================\n")
 
-    # 3. Scrape Product Cards
-    products = driver.find_elements(By.CSS_SELECTOR, "div[data-qa-locator='product-item']")
-    results = []
-
-    if not products:
+    # 3. Scrape Product Cards (PAGE 1)
+    print("📥 Scraping Page 1...")
+    all_results = scrape_page_items(driver)
+    
+    if not all_results:
         log(f"⚠️ No products found for '{query}'. Marking as PENDING.", output_lines)
         return False 
+    
+    log(f"   -> Found {len(all_results)} items on Page 1.", output_lines)
 
-    log(f"Found {len(products)} products for '{query}'. Processing...", output_lines)
-
-    for product in products:
-        try: item_name = product.find_element(By.CSS_SELECTOR, ".RfADt a").text.strip()
-        except: item_name = ""
-        try: item_price = product.find_element(By.CSS_SELECTOR, ".aBrP0 .ooOxS").text.strip()
-        except: item_price = ""
-        try: sku = product.get_attribute("data-sku-simple")
-        except: sku = ""
-        try: 
-            link = product.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
-            if link.startswith("//"): link = "https:" + link
-        except: link = ""
-        try: 
-            sold_text = product.find_element(By.CSS_SELECTOR, "._1cEkb span").text
-            sold_count = parse_sold_count(sold_text)
-        except: sold_text = ""; sold_count = 0
-
-        results.append({
-            "name": item_name, "price": item_price, "sku": sku,
-            "link": link, "sold_text": sold_text, "sold_count": sold_count
-        })
-
-    # 4. Sort and Analyze
-    if results:
-        sorted_results = sorted(results, key=lambda x: x["sold_count"], reverse=True)
-        TOP_ITEM = sorted_results[0]
+    # 4. Scrape Product Cards (PAGE 2) - NEW LOGIC
+    try:
+        # Locating the '2' pagination button specifically
+        page_two_btn = driver.find_elements(By.CSS_SELECTOR, "li[title='2'] a")
         
-        similar_items = []
-        for item in sorted_results:
-            score = fuzz.token_sort_ratio(TOP_ITEM["name"], item["name"])
-            if score >= 75:
-                similar_items.append((score, item))
-        similar_items.sort(reverse=True, key=lambda x: x[0])
+        if page_two_btn:
+            print("➡️ Navigating to Page 2...")
+            driver.execute_script("arguments[0].click();", page_two_btn[0])
+            time.sleep(6) # Wait for load
+            
+            page_2_results = scrape_page_items(driver)
+            log(f"   -> Found {len(page_2_results)} items on Page 2.", output_lines)
+            
+            all_results.extend(page_2_results)
+        else:
+            print("ℹ️ No Page 2 found (less than 40 results).")
+            
+    except Exception as e:
+        print(f"⚠️ Error navigating to Page 2: {e}")
 
-        log("\n================= TOP SELLING ITEM =================\n", output_lines)
-        log(f"Name:  {TOP_ITEM['name']}", output_lines)
-        log(f"Price: {TOP_ITEM['price']}", output_lines)
-        log(f"SKU:   {TOP_ITEM['sku']}", output_lines)
-        log(f"Sold:  {TOP_ITEM['sold_text']} ({TOP_ITEM['sold_count']})", output_lines)
-        log(f"Link: {TOP_ITEM['link']}", output_lines)
-        log("\n=====================================================\n", output_lines)
+    # 5. Sort and Analyze (New Grouping Logic)
+    if all_results:
+        # Sort ALL results by sold count first
+        sorted_results = sorted(all_results, key=lambda x: x["sold_count"], reverse=True)
+        
+        # --- NEW ALGORITHM: GROUPING WITHOUT OVERLAP ---
+        grouped_groups = []
+        
+        # We use a set of indices to keep track of items already assigned to a group
+        processed_indices = set()
+        
+        # Loop to find up to 10 groups
+        for i in range(len(sorted_results)):
+            if len(grouped_groups) >= 10:
+                break
+                
+            if i in processed_indices:
+                continue
+            
+            # This item becomes the "Top Seller" for this new group
+            top_item = sorted_results[i]
+            processed_indices.add(i)
+            
+            current_group = {
+                "top": top_item,
+                "similars": []
+            }
+            
+            # Scan for similar items in the remainder of the list
+            for j in range(i + 1, len(sorted_results)):
+                if j in processed_indices:
+                    continue
+                
+                candidate = sorted_results[j]
+                score = fuzz.token_sort_ratio(top_item["name"], candidate["name"])
+                
+                if score >= 90:
+                    current_group["similars"].append({
+                        "item": candidate,
+                        "score": score
+                    })
+                    processed_indices.add(j)
+            
+            grouped_groups.append(current_group)
 
-        log("============= ITEMS SIMILAR TO TOP SELLING =============\n", output_lines)
-        for score, item in similar_items:
-            log(f"[Similarity {score}%] {item['name']}", output_lines)
-            log(f"   Price: {item['price']}", output_lines)
-            log(f"   SKU:   {item['sku']}", output_lines)
-            log(f"   Sold:  {item['sold_text']} ({item['sold_count']})", output_lines)
-            log(f"   Link:  {item['link']}", output_lines)
-            log("\n", output_lines)
+        # --- WRITE REPORT ---
+        log(f"\nAnalyzed {len(all_results)} total items. Found {len(grouped_groups)} distinct top-selling groups.\n", output_lines)
 
-        log("\n================= ALL SORTED RESULTS =================\n", output_lines)
-        for i, item in enumerate(sorted_results, start=1):
-            log(f"{i}. {item['name']}", output_lines)
-            log(f"   Price: {item['price']}", output_lines)
-            log(f"   SKU:   {item['sku']}", output_lines)
-            log(f"   Sold: {item['sold_text']} ({item['sold_count']})", output_lines)
-            log(f"   Link: {item['link']}", output_lines)
-            log("\n", output_lines)
+        for idx, group in enumerate(grouped_groups, 1):
+            top = group["top"]
+            log(f"🟦 GROUP #{idx} (Top Seller: {top['sold_count']} sold)", output_lines)
+            log(f"   Name:  {top['name']}", output_lines)
+            log(f"   Price: {top['price']} | SKU: {top['sku']}", output_lines)
+            log(f"   Link:  {top['link']}", output_lines)
+            log(f"   Image: {top['image']}", output_lines)
+            
+            if group["similars"]:
+                log(f"   --- {len(group['similars'])} Similar Items (Non-Overlapping) ---", output_lines)
+                for sim in group["similars"]:
+                    item = sim["item"]
+                    log(f"   • [{sim['score']}% Match] {item['name']}", output_lines)
+                    log(f"     Price: {item['price']} | Sold: {item['sold_text']}", output_lines)
+                    log(f"     Link:  {item['link']}", output_lines)
+            else:
+                log("   --- No similar items found in top results ---", output_lines)
+            
+            log("\n" + "-"*40 + "\n", output_lines)
 
+        # Save File
         filename = f"{file_safe_query}.txt"
         full_path = os.path.join(save_dir, filename)
         
@@ -292,15 +362,15 @@ def main():
     options.add_argument("--height=900")
     options.add_argument("--headless") 
 
-    # 1. Report Mode (Exits after printing)
+    # 1. Report Mode
     if args.generate_report:
         generate_report_mode(args.generate_report)
 
-    # 2. Determine Mode: Interactive (Single) vs Batch (CSV List)
+    # 2. Determine Mode
     is_batch_mode = args.next_items or args.retry_pending_categories
 
     if not is_batch_mode:
-        # === INTERACTIVE MODE (DEFAULT) ===
+        # === INTERACTIVE MODE ===
         print("\n👋 Entering Interactive Mode")
         user_query = input("🔎 Please enter a search query: ").strip()
         
@@ -317,8 +387,6 @@ def main():
             
             success = scrape_category(driver, user_query, today_dir)
             status = 'DONE' if success else 'PENDING'
-            
-            # Feature: Update or Create CSV entry
             update_or_create_csv(user_query, status, today_str)
             
         except Exception as e:
@@ -328,7 +396,7 @@ def main():
             driver.quit()
 
     else:
-        # === BATCH MODE (LEGACY) ===
+        # === BATCH MODE ===
         if not os.path.exists(CSV_FILE):
             print(f"❌ Error: {CSV_FILE} not found! Run without arguments first to create one.")
             return
@@ -336,13 +404,10 @@ def main():
         categories = []
         with open(CSV_FILE, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            # Normalize field names to handle potential BOM or whitespace issues
-            fieldnames = [x.strip() for x in reader.fieldnames] 
             for row in reader:
                 clean_row = {k.strip(): v.strip() for k, v in row.items()}
                 categories.append(clean_row)
 
-        # Filter Targets
         target_indices = []
         pending_indices = [i for i, c in enumerate(categories) if c.get('status') == 'PENDING']
         new_indices = [i for i, c in enumerate(categories) if c.get('status') == '']
@@ -383,14 +448,12 @@ def main():
                 try:
                     success = scrape_category(driver, category_name, today_dir)
                     
-                    # Update Memory
                     categories[list_idx]['last_searched_date'] = today_str
                     categories[list_idx]['status'] = 'DONE' if success else 'PENDING'
                     
                     if success: print(f"✅ {category_name} -> DONE")
                     else: print(f"⚠️ {category_name} -> PENDING")
 
-                    # Write to CSV immediately
                     with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
                         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
                         writer.writeheader()
