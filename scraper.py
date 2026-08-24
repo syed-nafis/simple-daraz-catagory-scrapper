@@ -7,7 +7,6 @@ import random
 import sys
 from datetime import datetime
 from rapidfuzz import fuzz
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -19,11 +18,10 @@ from webdriver_manager.firefox import GeckoDriverManager
 CSV_FILE = "category_list.csv"
 BASE_REPORT_DIR = "category_report"
 CSV_FIELDNAMES = ['category_name', 'status', 'last_searched_date']
-
 # ------------------------- HELPER FUNCTIONS ---------------------------
 
+# Convert sold count text '2.4k sold' → 2400
 def parse_sold_count(text):
-    """Convert sold count text '2.4k sold' → 2400"""
     if not text:
         return 0
     text = text.lower().replace("sold", "").strip()
@@ -34,16 +32,15 @@ def parse_sold_count(text):
         return int(re.sub(r"[^\d]", "", text)) if re.search(r"\d", text) else 0
 
 def log(text, output_lines):
-    """Helper to print to console and add to output list"""
     print(text)
     output_lines.append(text)
 
+"""
+Handles Feature #2: Checks if CSV exists.
+- If no: Creates it and adds the entry.
+- If yes: Appends new entry or updates existing one.
+"""
 def update_or_create_csv(category_name, status, date_str):
-    """
-    Handles Feature #2: Checks if CSV exists.
-    - If no: Creates it and adds the entry.
-    - If yes: Appends new entry or updates existing one.
-    """
     rows = []
     found = False
 
@@ -58,7 +55,6 @@ def update_or_create_csv(category_name, status, date_str):
                         clean_row['last_searched_date'] = date_str
                         found = True
                     rows.append(clean_row)
-
     if not found:
         rows.append({
             'category_name': category_name,
@@ -75,7 +71,7 @@ def update_or_create_csv(category_name, status, date_str):
     print(f"💾 CSV Record {action}: {category_name} | {status}")
 
 def generate_report_mode(mode):
-    """Handles the --generate-report logic"""
+# Handles the --generate-report logic 
     if not os.path.exists(CSV_FILE):
         print(f"❌ Error: {CSV_FILE} not found!")
         return
@@ -107,7 +103,7 @@ def generate_report_mode(mode):
     sys.exit(0) 
 
 def scrape_page_items(driver):
-    """Helper to extract items from the current page view."""
+# Helper to extract items from the current page view.
     products = driver.find_elements(By.CSS_SELECTOR, "div[data-qa-locator='product-item']")
     page_results = []
     
@@ -341,7 +337,6 @@ def scrape_category(driver, query, save_dir):
     return False
 
 # ------------------------- MAIN EXECUTION ---------------------------
-
 def main():
     parser = argparse.ArgumentParser(description="Daraz Category Scraper")
     
